@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  NEW
+  ACCEPTED
+  MASTER_ASSIGNED
+  MASTER_ON_WAY
+  DONE
+  CANCELLED
+}
+
+/// Категория техники. Список хранится в БД и наполняется сидом.
+model Category {
+  id        Int       @id @default(autoincrement())
+  slug      String    @unique
+  name      String
+  sortOrder Int       @default(0) @map("sort_order")
+  isActive  Boolean   @default(true) @map("is_active")
+  problems  Problem[]
+  orders    Order[]
+  masters   Master[]  @relation("MasterSpecializations")
+
+  @@map("categories")
+}
+
+/// Типовая неисправность — своя для каждой категории.
+model Problem {
+  id         Int      @id @default(autoincrement())
+  categoryId Int      @map("category_id")
+  name       String
+  sortOrder  Int      @default(0) @map("sort_order")
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, name])
+  @@map("problems")
+}
+
+/// Заявка. id — это и есть номер заявки (последовательность начинается с 10001).
+model Order {
+  id             Int            @id @default(autoincrement())
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  status         OrderStatus    @default(NEW)
+  categoryId     Int            @map("category_id")
+  category       Category       @relation(fields: [categoryId], references: [id])
+  deviceType     String?        @map("device_type")
+  brand          String?
+  problem        String
+  problemDetails String?        @map("problem_details")
+  city           String
+  street         String
+  house          String
+  flat           String?
+  addressComment String?        @map("address_comment")
+  visitDate      DateTime       @map("visit_date") @db.Date
+  timeSlot       String         @map("time_slot")
+  clientName     String         @map("client_name")
+  phone          String
+  comment        String?
+  masterId       Int?           @map("master_id")
+  master         Master?        @relation(fields: [masterId], references: [id], onDelete: SetNull)
+  history        OrderHistory[]
+  notes          OrderNote[]
+
+  @@index([status])
+  @@index([phone])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+/// История изменений заявки: статусы, назначение мастера, перенос времени.
+model OrderHistory {
+  id        Int          @id @default(autoincrement())
+  orderId   Int          @map("order_id")
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now()) @map("created_at")
+  status    OrderStatus?
+  message   String
+  author    String
+
+  @@index([orderId])
+  @@map("order_history")
+}
+
+/// Внутренний комментарий сотрудника. Клиенту не показывается.
+model OrderNote {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @map("order_id")
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  text      String
+  author    String
+
+  @@index([orderId])
+  @@map("order_notes")
+}
+
+model Master {
+  id              Int        @id @default(autoincrement())
+  name            String
+  phone           String
+  /// Рабочие дни: 0 — воскресенье, 1 — понедельник … 6 — суббота
+  workDays        Int[]      @map("work_days")
+  isAvailable     Boolean    @default(true) @map("is_available")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  specializations Category[] @relation("MasterSpecializations")
+  orders          Order[]
+
+  @@map("masters")
+}
+
+model Admin {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admins")
+}
